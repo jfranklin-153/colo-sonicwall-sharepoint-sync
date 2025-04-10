@@ -23,12 +23,14 @@ site = client.sites.get_by_url(site_url).get().execute_query()
 
 # Access the default document library (e.g., "Documents" or "Shared Documents")
 document_library = site.drive.root  # Access the root of the default document library
+subdirectory_path = os.getenv("SHAREPOINT_SUBDIRECTORY")
+subdirectory = document_library.get_by_path(subdirectory_path).get().execute_query()
 
 # Upload a local file into the document library
 file_path = "local_file.csv"
 file_name = os.path.basename(file_path)
 
 with open(file_path, "rb") as file_content:
-    document_library.upload(file_name, file_content).execute_query()
+    subdirectory.upload(file_name, file_content).execute_query()
 
 print(f"File '{file_name}' uploaded successfully to the document library.")
