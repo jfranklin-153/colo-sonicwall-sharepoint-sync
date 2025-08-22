@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 from office365.graph_client import GraphClient
 import os
 import time
+import math
 # load environment file
 load_dotenv(override=True)
 
@@ -11,6 +12,9 @@ SHAREPOINT_CLIENT_SECRET = os.getenv("SHAREPOINT_CLIENT_SECRET")
 SHAREPOINT_TENANT_ID = os.getenv("SHAREPOINT_TENANT_ID")
 SHAREPOINT_ROOT_URL = os.getenv("SHAREPOINT_ROOT_URL")
 SHAREPOINT_SITE_NAME = os.getenv("SHAREPOINT_SITE_NAME")
+
+UPLOAD_SPEED_LIMIT_KBPS = int(
+    os.getenv("UPLOAD_SPEED_LIMIT_KBPS", "100"))  # Default 100KB/s
 
 # set the site url
 site_url = f"{SHAREPOINT_ROOT_URL}/sites/{SHAREPOINT_SITE_NAME}"
@@ -37,9 +41,10 @@ monday_date = time.strftime("%Y-%m-%d", time.localtime(
 
 # get current script path
 script_path = os.path.abspath(__file__)
-script_dir = os.path.dirname(script_path)
-# get all file names that end in.csv in the script directory
-csv_files = [f for f in os.listdir(script_dir) if f.endswith('.csv')]
+LOCAL_UPLOAD_DIRECTORY = os.getenv('LOCAL_UPLOAD_DIRECTORY')
+# get all file paths that end in .csv in the LOCAL_UPLOAD_DIRECTORY
+csv_files = [os.path.join(LOCAL_UPLOAD_DIRECTORY, f) for f in os.listdir(
+    LOCAL_UPLOAD_DIRECTORY) if f.endswith('.csv')]
 
 
 def check_directory_exists(monday):
@@ -61,17 +66,37 @@ def check_directory_exists(monday):
     return final_directory
 
 
+def throttled_upload(final_directory, file_path, file_name, speed_limit_kbps):
+    chunk_size = speed_limit_kbps * 1024  # bytes per second
+    with open(file_path, "rb") as f:
+        file_size = os.path.getsize(file_path)
+        total_chunks = math.ceil(file_size / chunk_size)
+        print(
+            f"Uploading '{file_name}' in {total_chunks} chunks at {speed_limit_kbps}KB/s...")
+        # Read and simulate upload in chunks
+        uploaded = 0
+        for chunk_num in range(total_chunks):
+            chunk = f.read(chunk_size)
+            time.sleep(1)  # Sleep 1 second per chunk
+            uploaded += len(chunk)
+            print(f"Read {uploaded}/{file_size} bytes...")
+        # After throttling, upload the file
+        f.seek(0)
+        final_directory.upload(file_name, f).execute_query()
+
+
 def main():
     final_directory = check_directory_exists(monday_date)
     if not final_directory:
         exit(1)
-    file_path = "local_file.csv"
-    file_name = os.path.basename(file_path)
 
-    with open(file_path, "rb") as file_content:
-        final_directory.upload(file_name, file_content).execute_query()
-
-    print(f"File '{file_name}' uploaded successfully to the document library.")
+    for csv_file in csv_files:
+        file_path = os.path.join(LOCAL_UPLOAD_DIRECTORY, csv_file)
+        file_name = os.path.basename(file_path)
+        throttled_upload(final_directory, file_path,
+                         file_name, UPLOAD_SPEED_LIMIT_KBPS)
+        print(
+            f"File '{file_name}' uploaded successfully to the document library.")
 
 
 if __name__ == "__main__":
